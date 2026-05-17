@@ -48,6 +48,41 @@ static int asn1_valid_der(struct asn1_hdr *hdr)
 		return 1;
 	if (hdr->tag == ASN1_TAG_BOOLEAN && !asn1_valid_der_boolean(hdr))
 		return 0;
+	if (hdr->tag == ASN1_TAG_NULL && hdr->length != 0)
+		return 0;
+
+	/* Check for allowed primitive/constructed values */
+	if (hdr->constructed &&
+	    (hdr->tag == ASN1_TAG_BOOLEAN ||
+	     hdr->tag == ASN1_TAG_INTEGER ||
+	     hdr->tag == ASN1_TAG_NULL ||
+	     hdr->tag == ASN1_TAG_OID ||
+	     hdr->tag == ANS1_TAG_RELATIVE_OID ||
+	     hdr->tag == ASN1_TAG_REAL ||
+	     hdr->tag == ASN1_TAG_ENUMERATED ||
+	     hdr->tag == ASN1_TAG_BITSTRING ||
+	     hdr->tag == ASN1_TAG_OCTETSTRING ||
+	     hdr->tag == ASN1_TAG_NUMERICSTRING ||
+	     hdr->tag == ASN1_TAG_PRINTABLESTRING ||
+	     hdr->tag == ASN1_TAG_T61STRING ||
+	     hdr->tag == ASN1_TAG_VIDEOTEXSTRING ||
+	     hdr->tag == ASN1_TAG_VISIBLESTRING ||
+	     hdr->tag == ASN1_TAG_IA5STRING ||
+	     hdr->tag == ASN1_TAG_GRAPHICSTRING ||
+	     hdr->tag == ASN1_TAG_GENERALSTRING ||
+	     hdr->tag == ASN1_TAG_UNIVERSALSTRING ||
+	     hdr->tag == ASN1_TAG_UTF8STRING ||
+	     hdr->tag == ASN1_TAG_BMPSTRING ||
+	     hdr->tag == ASN1_TAG_CHARACTERSTRING ||
+	     hdr->tag == ASN1_TAG_UTCTIME ||
+	     hdr->tag == ASN1_TAG_GENERALIZEDTIME ||
+	     hdr->tag == ASN1_TAG_TIME))
+		return 0;
+	if (!hdr->constructed &&
+	    (hdr->tag == ASN1_TAG_SEQUENCE ||
+	     hdr->tag == ASN1_TAG_SET))
+		return 0;
+
 	return 1;
 }
 
@@ -70,18 +105,35 @@ int asn1_get_next(const u8 *buf, size_t len, struct asn1_hdr *hdr)
 	hdr->constructed = !!(hdr->identifier & (1 << 5));
 
 	if ((hdr->identifier & 0x1f) == 0x1f) {
+		size_t ext_len = 0;
+
 		hdr->tag = 0;
+		if (pos == end || (*pos & 0x7f) == 0) {
+			wpa_printf(MSG_DEBUG,
+				   "ASN.1: Invalid extended tag (first octet has to be included with at least one nonzero bit for the tag value)");
+			return -1;
+		}
 		do {
 			if (pos >= end) {
 				wpa_printf(MSG_DEBUG, "ASN.1: Identifier "
 					   "underflow");
 				return -1;
 			}
+			ext_len++;
 			tmp = *pos++;
 			wpa_printf(MSG_MSGDUMP, "ASN.1: Extended tag data: "
 				   "0x%02x", tmp);
 			hdr->tag = (hdr->tag << 7) | (tmp & 0x7f);
 		} while (tmp & 0x80);
+		wpa_printf(MSG_MSGDUMP, "ASN.1: Extended Tag: 0x%x (len=%zu)",
+			   hdr->tag, ext_len);
+		if ((hdr->class != ASN1_CLASS_PRIVATE && hdr->tag < 31) ||
+		    ext_len * 7 > sizeof(hdr->tag) * 8) {
+			wpa_printf(MSG_DEBUG,
+				   "ASN.1: Invalid or unsupported (too large) extended Tag: 0x%x (len=%zu)",
+				   hdr->tag, ext_len);
+			return -1;
+		}
 	} else
 		hdr->tag = hdr->identifier & 0x1f;
 
@@ -98,6 +150,11 @@ int asn1_get_next(const u8 *buf, size_t len, struct asn1_hdr *hdr)
 		}
 		tmp &= 0x7f; /* number of subsequent octets */
 		hdr->length = 0;
+		if (tmp == 0 || pos == end || *pos == 0) {
+			wpa_printf(MSG_DEBUG,
+				   "ASN.1: Definite long form of the length does not start with a nonzero value");
+			return -1;
+		}
 		if (tmp > 4) {
 			wpa_printf(MSG_DEBUG, "ASN.1: Too long length field");
 			return -1;
@@ -109,6 +166,11 @@ int asn1_get_next(const u8 *buf, size_t len, struct asn1_hdr *hdr)
 				return -1;
 			}
 			hdr->length = (hdr->length << 8) | *pos++;
+		}
+		if (hdr->length < 128) {
+			wpa_printf(MSG_DEBUG,
+				   "ASN.1: Definite long form of the length used with too short length");
+			return -1;
 		}
 	} else {
 		/* Short form - length 0..127 in one octet */
