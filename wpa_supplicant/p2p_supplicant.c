@@ -3608,7 +3608,7 @@ static int wpas_p2p_setup_channels(struct wpa_supplicant *wpa_s,
 
 	for (op = 0; global_op_class[op].op_class; op++) {
 		const struct oper_class_map *o = &global_op_class[op];
-		u8 ch;
+		unsigned int ch;
 		struct p2p_reg_class *reg = NULL, *cli_reg = NULL;
 
 		if (o->p2p == NO_P2P_SUPP)
@@ -3624,23 +3624,32 @@ static int wpas_p2p_setup_channels(struct wpa_supplicant *wpa_s,
 			res = wpas_p2p_verify_channel(wpa_s, mode, ch, o->bw);
 			if (res == ALLOWED) {
 				if (reg == NULL) {
+					if (cla == P2P_MAX_REG_CLASSES)
+						continue;
 					wpa_printf(MSG_DEBUG, "P2P: Add operating class %u",
 						   o->op_class);
 					reg = &chan->reg_class[cla];
 					cla++;
 					reg->reg_class = o->op_class;
 				}
+				if (reg->channels == P2P_MAX_REG_CLASS_CHANNELS)
+					continue;
 				reg->channel[reg->channels] = ch;
 				reg->channels++;
 			} else if (res == NO_IR &&
 				   wpa_s->conf->p2p_add_cli_chan) {
 				if (cli_reg == NULL) {
+					if (cli_cla == P2P_MAX_REG_CLASSES)
+						continue;
 					wpa_printf(MSG_DEBUG, "P2P: Add operating class %u (client only)",
 						   o->op_class);
 					cli_reg = &cli_chan->reg_class[cli_cla];
 					cli_cla++;
 					cli_reg->reg_class = o->op_class;
 				}
+				if (cli_reg->channels ==
+				    P2P_MAX_REG_CLASS_CHANNELS)
+					continue;
 				cli_reg->channel[cli_reg->channels] = ch;
 				cli_reg->channels++;
 			}
@@ -8316,7 +8325,7 @@ static void wpas_p2p_remove_client_go(struct wpa_supplicant *wpa_s,
 				hapd->conf->ssid.wpa_psk = psk->next;
 			rem = psk;
 			psk = psk->next;
-			os_free(rem);
+			bin_clear_free(rem, sizeof(*rem));
 		} else {
 			prev = psk;
 			psk = psk->next;
