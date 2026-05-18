@@ -66,6 +66,11 @@ void asn1_oid_to_str(const struct asn1_oid *oid, char *buf, size_t len);
 unsigned long asn1_bit_string_to_long(const u8 *buf, size_t len);
 int asn1_oid_equal(const struct asn1_oid *a, const struct asn1_oid *b);
 
+static inline int asn1_is_null(const struct asn1_hdr *hdr)
+{
+	return hdr->class == ASN1_CLASS_UNIVERSAL && hdr->tag == ASN1_TAG_NULL;
+}
+
 extern struct asn1_oid asn1_sha1_oid;
 extern struct asn1_oid asn1_sha256_oid;
 
