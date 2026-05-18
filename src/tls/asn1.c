@@ -135,7 +135,7 @@ int asn1_get_next(const u8 *buf, size_t len, struct asn1_hdr *hdr)
 			hdr->tag = (hdr->tag << 7) | (tmp & 0x7f);
 		} while (tmp & 0x80);
 		if (hdr->tag < 31 ||
-		    ext_len * 7 > sizeof(hdr->tag) * 8) {
+		    ext_len > (sizeof(hdr->tag) * 8) / 7) {
 			wpa_printf(MSG_DEBUG,
 				   "ASN.1: Invalid or unsupported (too large) extended tag (tag value %u, len=%zu)",
 				   hdr->tag, ext_len);
