@@ -114,6 +114,8 @@ int asn1_get_next(const u8 *buf, size_t len, struct asn1_hdr *hdr)
 	hdr->constructed = !!(hdr->identifier & (1 << 5));
 
 	if ((hdr->identifier & 0x1f) == 0x1f) {
+		size_t ext_len = 0;
+
 		hdr->tag = 0;
 		if (pos == end || (*pos & 0x7f) == 0) {
 			wpa_printf(MSG_DEBUG,
@@ -126,15 +128,17 @@ int asn1_get_next(const u8 *buf, size_t len, struct asn1_hdr *hdr)
 					   "underflow");
 				return -1;
 			}
+			ext_len++;
 			tmp = *pos++;
 			wpa_printf(MSG_MSGDUMP, "ASN.1: Extended tag data: "
 				   "0x%02x", tmp);
 			hdr->tag = (hdr->tag << 7) | (tmp & 0x7f);
 		} while (tmp & 0x80);
-		if (hdr->tag < 31) {
+		if (hdr->tag < 31 ||
+		    ext_len * 7 > sizeof(hdr->tag) * 8) {
 			wpa_printf(MSG_DEBUG,
-				   "ASN.1: Invalid extended tag (tag value %u is too small to use extended form)",
-				   hdr->tag);
+				   "ASN.1: Invalid or unsupported (too large) extended tag (tag value %u, len=%zu)",
+				   hdr->tag, ext_len);
 			return -1;
 		}
 	} else
@@ -153,7 +157,12 @@ int asn1_get_next(const u8 *buf, size_t len, struct asn1_hdr *hdr)
 		}
 		tmp &= 0x7f; /* number of subsequent octets */
 		hdr->length = 0;
-		if (tmp == 0 || pos == end || *pos == 0) {
+		if (tmp == 0) {
+			/* 0x80 means indefinite length, which is not valid DER */
+			wpa_printf(MSG_DEBUG, "ASN.1: Indefinite length");
+			return -1;
+		}
+		if (pos == end || *pos == 0) {
 			wpa_printf(MSG_DEBUG,
 				   "ASN.1: Definite long form of the length does not start with a nonzero value");
 			return -1;
