@@ -115,6 +115,11 @@ int asn1_get_next(const u8 *buf, size_t len, struct asn1_hdr *hdr)
 
 	if ((hdr->identifier & 0x1f) == 0x1f) {
 		hdr->tag = 0;
+		if (pos == end || (*pos & 0x7f) == 0) {
+			wpa_printf(MSG_DEBUG,
+				   "ASN.1: Invalid extended tag (first octet has to be included with at least one nonzero bit for the tag value)");
+			return -1;
+		}
 		do {
 			if (pos >= end) {
 				wpa_printf(MSG_DEBUG, "ASN.1: Identifier "
@@ -126,6 +131,12 @@ int asn1_get_next(const u8 *buf, size_t len, struct asn1_hdr *hdr)
 				   "0x%02x", tmp);
 			hdr->tag = (hdr->tag << 7) | (tmp & 0x7f);
 		} while (tmp & 0x80);
+		if (hdr->tag < 31) {
+			wpa_printf(MSG_DEBUG,
+				   "ASN.1: Invalid extended tag (tag value %u is too small to use extended form)",
+				   hdr->tag);
+			return -1;
+		}
 	} else
 		hdr->tag = hdr->identifier & 0x1f;
 
