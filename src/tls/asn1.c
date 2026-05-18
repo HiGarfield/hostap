@@ -48,6 +48,10 @@ static int asn1_valid_der(struct asn1_hdr *hdr)
 		return 1;
 	if (hdr->tag == ASN1_TAG_BOOLEAN && !asn1_valid_der_boolean(hdr))
 		return 0;
+	if (hdr->tag == ASN1_TAG_NULL && hdr->length != 0) {
+		wpa_printf(MSG_DEBUG, "ASN.1: Non-zero length for NULL");
+		return 0;
+	}
 	return 1;
 }
 
